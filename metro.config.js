@@ -6,10 +6,10 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// 添加路径别名 @/ 指向 src 目录
+// 添加路径别名 @/ 指向项目根目录
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
-  '@': path.resolve(__dirname, 'src'),
+  '@': __dirname,
 };
 
 // 安全地获取 Expo 的默认排除列表
@@ -38,12 +38,6 @@ config.resolver.blockList = [
   // 5. pnpm 临时目录（避免 ENOENT 错误）
   /.*node_modules\/\.pnpm\/.*_tmp_\d+.*/,
 ];
-
-// 添加 @ 路径别名
-config.resolver.extraNodeModules = {
-  ...config.resolver.extraNodeModules,
-  '@': __dirname,
-};
 
 const BACKEND_TARGET = 'http://localhost:9091';
 
