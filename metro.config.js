@@ -6,10 +6,10 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// 添加路径别名 @/ 指向项目根目录
+// 添加路径别名 @/ 指向 src 目录
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
-  '@': __dirname,
+  '@': path.resolve(__dirname, 'src'),
 };
 
 // 安全地获取 Expo 的默认排除列表
