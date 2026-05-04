@@ -32,6 +32,12 @@ config.resolver.blockList = [
   /.*node_modules\/\.pnpm\/.*_tmp_\d+.*/,
 ];
 
+// 添加 @ 路径别名
+config.resolver.extraNodeModules = {
+  ...config.resolver.extraNodeModules,
+  '@': __dirname,
+};
+
 const BACKEND_TARGET = 'http://localhost:9091';
 
 const apiProxy = createProxyMiddleware({
