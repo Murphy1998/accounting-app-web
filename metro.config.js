@@ -2,8 +2,15 @@ const { getDefaultConfig } = require('expo/metro-config');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const connect = require('connect');
 const { withUniwindConfig } = require('uniwind/metro');
+const path = require('path');
 
 const config = getDefaultConfig(__dirname);
+
+// 添加路径别名 @/ 指向 src 目录
+config.resolver.extraNodeModules = {
+  ...config.resolver.extraNodeModules,
+  '@': path.resolve(__dirname, 'src'),
+};
 
 // 安全地获取 Expo 的默认排除列表
 const existingBlockList = [].concat(config.resolver.blockList || []);

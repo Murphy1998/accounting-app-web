@@ -8,13 +8,14 @@ import {
   FlatList,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { FontAwesome6 } from '@expo/vector-icons';
 
 import { Screen } from '@/components/Screen';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetchRecords, addRecord, deleteRecord, getDeviceId } from '@/services/api';
 
 // 记账类型定义
 type TransactionType = 'income' | 'expense';
@@ -40,21 +41,13 @@ const categories: Category[] = [
 
 // 记账记录接口
 interface Record {
-  id: string;
-  amount: string;
-  categoryId: string;
+  id: number;
+  amount: number;
   type: TransactionType;
+  category: string;
   note: string;
-  date: string;
-  timestamp: number;
+  created_at: string;
 }
-
-const STORAGE_KEY = 'account_records';
-
-// 生成唯一ID
-const generateId = (): string => {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-};
 
 // 格式化日期
 const formatDate = (dateStr: string): string => {
@@ -72,29 +65,27 @@ export default function AccountPage() {
   const [note, setNote] = useState('');
   const [records, setRecords] = useState<Record[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deviceId, setDeviceId] = useState<string>('');
 
   // 加载数据
   const loadRecords = useCallback(async () => {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEY);
-      if (data) {
-        setRecords(JSON.parse(data));
-      }
+      setIsLoading(true);
+      const id = await getDeviceId();
+      setDeviceId(id);
+      const data = await fetchRecords();
+      // 过滤当前设备的数据
+      const filteredData = data.filter((r: Record) => r.device_id === id || !r.device_id);
+      setRecords(filteredData || []);
     } catch (error) {
       console.error('Failed to load records:', error);
+      // 降级到空列表
+      setRecords([]);
     } finally {
       setIsLoading(false);
     }
   }, []);
-
-  // 保存数据
-  const saveRecords = async (newRecords: Record[]) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newRecords));
-    } catch (error) {
-      console.error('Failed to save records:', error);
-    }
-  };
 
   useEffect(() => {
     loadRecords();
@@ -110,16 +101,16 @@ export default function AccountPage() {
     let totalExpense = 0;
 
     records.forEach((record) => {
-      const recordDate = new Date(record.date);
+      const recordDate = new Date(record.created_at);
       if (
         recordDate.getMonth() === currentMonth &&
         recordDate.getFullYear() === currentYear
       ) {
-        const amount = parseFloat(record.amount) || 0;
+        const recordAmount = record.amount || 0;
         if (record.type === 'income') {
-          totalIncome += amount;
+          totalIncome += recordAmount;
         } else {
-          totalExpense += amount;
+          totalExpense += recordAmount;
         }
       }
     });
@@ -143,37 +134,47 @@ export default function AccountPage() {
       return;
     }
 
-    const newRecord: Record = {
-      id: generateId(),
-      amount,
-      categoryId: selectedCategory,
-      type: selectedType,
-      note,
-      date: new Date().toISOString(),
-      timestamp: Date.now(),
-    };
+    try {
+      setIsSubmitting(true);
+      const newRecord = await addRecord({
+        amount: parseFloat(amount),
+        type: selectedType,
+        category: selectedCategory,
+        note: note,
+      });
 
-    const newRecords = [newRecord, ...records];
-    setRecords(newRecords);
-    await saveRecords(newRecords);
+      // 添加到列表头部
+      setRecords([newRecord, ...records]);
 
-    // 重置表单
-    setAmount('');
-    setNote('');
-    setSelectedCategory('');
+      // 重置表单
+      setAmount('');
+      setNote('');
+      setSelectedCategory('');
+      
+      Alert.alert('成功', '记录已保存');
+    } catch (error) {
+      console.error('Failed to add record:', error);
+      Alert.alert('错误', '保存失败，请重试');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // 删除记录
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     Alert.alert('确认', '确定要删除这条记录吗？', [
       { text: '取消', style: 'cancel' },
       {
         text: '删除',
         style: 'destructive',
         onPress: async () => {
-          const newRecords = records.filter((r) => r.id !== id);
-          setRecords(newRecords);
-          await saveRecords(newRecords);
+          try {
+            await deleteRecord(id);
+            setRecords(records.filter((r) => r.id !== id));
+          } catch (error) {
+            console.error('Failed to delete record:', error);
+            Alert.alert('错误', '删除失败，请重试');
+          }
         },
       },
     ]);
@@ -191,7 +192,7 @@ export default function AccountPage() {
 
   // 渲染单条记录
   const renderRecord = ({ item }: { item: Record }) => {
-    const category = getCategory(item.categoryId);
+    const category = getCategory(item.category);
     const isExpense = item.type === 'expense';
 
     return (
@@ -202,12 +203,12 @@ export default function AccountPage() {
           </View>
           <View className="flex-1">
             <Text className="text-white font-medium">{category.name}</Text>
-            <Text className="text-gray-400 text-xs mt-0.5">{item.note || formatDate(item.date)}</Text>
+            <Text className="text-gray-400 text-xs mt-0.5">{item.note || formatDate(item.created_at)}</Text>
           </View>
         </View>
         <View className="flex-row items-center">
           <Text className={`text-base font-semibold mr-3 ${isExpense ? 'text-red-400' : 'text-green-400'}`}>
-            {isExpense ? '-' : '+'}¥{item.amount}
+            {isExpense ? '-' : '+'}¥{item.amount.toFixed(2)}
           </Text>
           <TouchableOpacity onPress={() => handleDelete(item.id)} className="p-1">
             <FontAwesome6 name="trash" size={14} color="#666" />
@@ -307,96 +308,93 @@ export default function AccountPage() {
 
           {/* 分类选择 - 毛玻璃效果 */}
           <View className="mx-4 mb-4 rounded-2xl overflow-hidden">
-            <BlurView intensity={30} tint="dark" style={{ padding: 20 }}>
-              <Text className="text-gray-400 text-sm mb-3">
-                {selectedType === 'expense' ? '支出分类' : '收入分类'}
-              </Text>
+            <BlurView intensity={30} tint="dark" style={{ padding: 16 }}>
+              <Text className="text-gray-400 text-sm mb-3">分类</Text>
               <View className="flex-row flex-wrap">
-                {categories
-                  .filter((c) => {
-                    if (selectedType === 'income') {
-                      return c.id === 'salary' || c.id === 'other';
-                    }
-                    return c.id !== 'salary';
-                  })
-                  .map((category) => (
-                    <TouchableOpacity
-                      key={category.id}
-                      className="items-center mb-4 mr-4"
-                      onPress={() => setSelectedCategory(category.id)}
+                {categories.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.id}
+                    className="w-1/4 items-center mb-3"
+                    onPress={() => setSelectedCategory(cat.id)}
+                  >
+                    <View
+                      className="w-12 h-12 rounded-full items-center justify-center mb-1"
+                      style={{
+                        backgroundColor: selectedCategory === cat.id ? cat.color : cat.color + '20',
+                        borderWidth: selectedCategory === cat.id ? 2 : 0,
+                        borderColor: cat.color,
+                      }}
                     >
-                      <View
-                        className="w-12 h-12 rounded-2xl items-center justify-center mb-1"
-                        style={{
-                          backgroundColor: selectedCategory === category.id
-                            ? category.color
-                            : category.color + '30',
-                        }}
-                      >
-                        <FontAwesome6
-                          name={category.icon as any}
-                          size={20}
-                          color={selectedCategory === category.id ? '#fff' : category.color}
-                        />
-                      </View>
-                      <Text
-                        className={`text-xs ${selectedCategory === category.id ? 'text-white' : 'text-gray-400'}`}
-                      >
-                        {category.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                      <FontAwesome6
+                        name={cat.icon as any}
+                        size={22}
+                        color={selectedCategory === cat.id ? '#fff' : cat.color}
+                      />
+                    </View>
+                    <Text className={`text-xs ${selectedCategory === cat.id ? 'text-white' : 'text-gray-400'}`}>
+                      {cat.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </BlurView>
           </View>
 
           {/* 备注输入 - 毛玻璃效果 */}
           <View className="mx-4 mb-4 rounded-2xl overflow-hidden">
-            <BlurView intensity={30} tint="dark" style={{ padding: 20 }}>
+            <BlurView intensity={30} tint="dark" style={{ padding: 16 }}>
               <Text className="text-gray-400 text-sm mb-2">备注（可选）</Text>
               <TextInput
-                className="text-white text-base"
+                className="text-white text-sm"
                 placeholder="添加备注..."
                 placeholderTextColor="rgba(255,255,255,0.3)"
                 value={note}
                 onChangeText={setNote}
-                maxLength={50}
+                multiline
               />
             </BlurView>
           </View>
 
           {/* 提交按钮 */}
-          <TouchableOpacity
-            className="mx-4 mb-6 py-4 rounded-2xl items-center overflow-hidden"
-            style={{ backgroundColor: statsColors.primary }}
-            onPress={handleSubmit}
-          >
-            <LinearGradient
-              colors={[statsColors.primary, statsColors.secondary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-            />
-            <Text className="text-white font-bold text-base relative z-10">记一笔</Text>
-          </TouchableOpacity>
+          <View className="mx-4 mb-6">
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={isSubmitting}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={[statsColors.primary, statsColors.secondary]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                className="py-4 rounded-2xl items-center"
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text className="text-white text-lg font-bold">保存记录</Text>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
 
-          {/* 明细列表 */}
-          <View className="px-4 pb-8">
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="text-white font-bold text-base">明细记录</Text>
-              <Text className="text-gray-400 text-sm">{records.length} 条</Text>
-            </View>
-
-            {records.length === 0 ? (
-              <View className="py-12 items-center">
+          {/* 记录列表 */}
+          <View className="px-4 pb-10">
+            <Text className="text-white font-semibold mb-3">最近记录</Text>
+            
+            {isLoading ? (
+              <View className="items-center py-10">
+                <ActivityIndicator color="#fff" size="large" />
+              </View>
+            ) : records.length === 0 ? (
+              <View className="items-center py-10">
                 <FontAwesome6 name="receipt" size={48} color="rgba(255,255,255,0.2)" />
                 <Text className="text-gray-500 mt-3">暂无记录</Text>
               </View>
             ) : (
               <FlatList
-                data={records.slice(0, 20)}
+                data={records}
                 renderItem={renderRecord}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item) => item.id.toString()}
                 scrollEnabled={false}
               />
             )}
