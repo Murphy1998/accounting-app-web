@@ -1,13 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://wfxejunpzxfnfesrckhh.supabase.co';
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeGVqdW5wenhmbmZlc3Jja2hoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4NzgwMzUsImV4cCI6MjA5MzQ1NDAzNX0.TJGyL_E_qCYxQYoimXcYdrUDFrAJntZfbCQKXvDXxCE';
+const SUPABASE_URL = 'https://wfxejunpzxfnfesrckhh.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeGVqdW5wenhmbmZlc3Jja2hoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4NzgwMzUsImV4cCI6MjA5MzQ1NDAzNX0.TJGyL_E_qCYxQYoimXcYdrUDFrAJntZfbCQKXvDXxCE';
 
 const DEVICE_ID_KEY = 'account_device_id';
 
-// 创建 Supabase 客户端
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const headers = {
+  'apikey': SUPABASE_ANON_KEY,
+  'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+  'Content-Type': 'application/json',
+  'Prefer': 'return=representation'
+};
 
 // 获取或生成设备ID
 export const getDeviceId = async (): Promise<string> => {
@@ -26,17 +29,17 @@ export const getDeviceId = async (): Promise<string> => {
 // 获取记录列表
 export const fetchRecords = async () => {
   try {
-    const { data, error } = await supabase
-      .from('account_records')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100);
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/account_records?select=*&order=created_at.desc&limit=100`, {
+      method: 'GET',
+      headers
+    });
     
-    if (error) {
-      console.error('Fetch records error:', error);
+    if (!response.ok) {
+      console.error('Fetch failed:', response.status);
       return [];
     }
     
+    const data = await response.json();
     return data || [];
   } catch (error) {
     console.error('Fetch records failed:', error);
@@ -53,7 +56,6 @@ export const addRecord = async (record: {
 }) => {
   const deviceId = await getDeviceId();
   
-  // 分类映射
   const categoryMap: Record<string, string> = {
     food: '餐饮',
     transport: '交通',
@@ -66,9 +68,10 @@ export const addRecord = async (record: {
   };
   
   try {
-    const { data, error } = await supabase
-      .from('account_records')
-      .insert({
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/account_records`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
         amount: record.amount.toString(),
         type: record.type,
         category_id: record.category,
@@ -77,14 +80,15 @@ export const addRecord = async (record: {
         device_id: deviceId,
         date: new Date().toISOString().split('T')[0],
       })
-      .select()
-      .single();
+    });
     
-    if (error) {
-      console.error('Add record error:', error);
-      throw new Error(error.message);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Add failed:', response.status, errorText);
+      throw new Error(`添加失败: ${response.status}`);
     }
     
+    const data = await response.json();
     return data;
   } catch (error) {
     console.error('Add record failed:', error);
@@ -95,14 +99,14 @@ export const addRecord = async (record: {
 // 删除记录
 export const deleteRecord = async (id: number) => {
   try {
-    const { error } = await supabase
-      .from('account_records')
-      .delete()
-      .eq('id', id);
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/account_records?id=eq.${id}`, {
+      method: 'DELETE',
+      headers
+    });
     
-    if (error) {
-      console.error('Delete record error:', error);
-      throw new Error(error.message);
+    if (!response.ok) {
+      console.error('Delete failed:', response.status);
+      throw new Error(`删除失败: ${response.status}`);
     }
     
     return true;
