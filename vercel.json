@@ -1,10 +1,13 @@
 {
   "buildCommand": "npx expo export --platform web",
   "outputDirectory": "dist",
-  "installCommand": "npm install --legacy-peer-deps",
+  "installCommand": "npm install",
   "framework": null,
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" }
+  ],
   "env": {
     "EXPO_PUBLIC_SUPABASE_URL": "https://wfxejunpzxfnfesrckhh.supabase.co",
-    "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_PkuRZrvLSVbJLK00EXaajg_6Ip4nTqI"
+    "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeGVqdW5wenhmbmZlc3Jja2hoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Nzg3ODAzNSwiZXhwIjoyMDkzNDU0MDM1fQ.GkNftzs-Zh8dEInaCgTy2091mQx5FAeZAGToeKjfk98"
   }
 }
