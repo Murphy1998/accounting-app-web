@@ -137,9 +137,10 @@ export default function AccountPage() {
     try {
       setIsSubmitting(true);
       const newRecord = await addRecord({
-        amount: parseFloat(amount),
+        amount: amount,
         type: selectedType,
-        category: selectedCategory,
+        category_id: selectedCategory,
+        category_name: categories.find(c => c.id === selectedCategory)?.name || selectedCategory,
         note: note,
       });
 
